@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NSE Option Chain Tracker | Professional Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#eff6ff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .table-container {
+      max-height: 65vh;
+    }
+    .sticky-header th {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background-color: #f9fafb;
+    }
+    .positive-change {
+      color: #10b981;
+    }
+    .negative-change {
+      color: #ef4444;
+    }
+    .option-call {
+      background-color: #f0f9ff;
+    }
+    .option-put {
+      background-color: #fef2f2;
+    }
+    .highlight-row {
+      background-color: #fefce8;
+    }
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255,255,255,.3);
+      border-radius: 50%;
+      border-top-color: #fff;
+      animation: spin 1s ease-in-out infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="max-w-7xl mx-auto px-4 py-6">
+    <!-- Header -->
+    <header class="mb-8">
+      <div class="flex justify-between items-center">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900">NSE Option Chain Tracker</h1>
+          <p class="text-gray-600 mt-1">Professional dashboard for tracking real-time options data</p>
+        </div>
+        <div class="flex items-center space-x-4">
+          <div class="text-right">
+            <div class="text-sm text-gray-500">Last Updated</div>
+            <div id="lastUpdateTime" class="font-medium">--:--:--</div>
+          </div>
+          <div class="h-10 w-10 rounded-full bg-primary-500 flex items-center justify-center text-white">
+            <i class="fas fa-chart-line"></i>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+      <!-- Control Panel -->
+      <div class="p-6 border-b border-gray-200">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <!-- Stock Selection -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              <i class="fas fa-chart-bar mr-1"></i> Select Stocks
+            </label>
+            <div class="relative">
+              <select id="stocksSelect" multiple class="w-full border border-gray-300 rounded-lg p-3 h-40 focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <!-- Options will be populated by JavaScript -->
+              </select>
+              <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <i class="fas fa-chevron-down text-gray-400"></i>
+              </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">
+              <i class="fas fa-info-circle mr-1"></i> Hold Ctrl/Cmd to select multiple stocks
+            </p>
+          </div>
+
+          <!-- Expiry Selection -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              <i class="fas fa-calendar-alt mr-1"></i> Expiry Date
+            </label>
+            <div class="relative">
+              <select id="expirySelect" class="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                <option value="">-- All Expiries --</option>
+                <!-- Options will be populated by JavaScript -->
+              </select>
+              <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                <i class="fas fa-chevron-down text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Filters -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+              <i class="fas fa-filter mr-1"></i> Filters
+            </label>
+            <div class="space-y-2">
+              <div class="flex items-center">
+                <input id="filterOTM" type="checkbox" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                <label for="filterOTM" class="ml-2 block text-sm text-gray-700">Show OTM Only</label>
+              </div>
+              <div class="flex items-center">
+                <input id="filterActive" type="checkbox" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                <label for="filterActive" class="ml-2 block text-sm text-gray-700">Active Contracts Only</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="flex flex-col justify-end space-y-3">
+            <button id="fetchBtn" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-medium py-3 px-4 rounded-lg transition duration-150 flex items-center justify-center">
+              <i class="fas fa-sync-alt mr-2"></i>
+              <span>Fetch Data</span>
+            </button>
+            
+            <div class="flex items-center justify-between">
+              <label class="flex items-center space-x-2">
+                <input id="autoRefresh" type="checkbox" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                <span class="text-sm text-gray-700">Auto-refresh</span>
+              </label>
+              <div class="flex items-center">
+                <input id="interval" type="number" min="10" value="60" class="w-16 border border-gray-300 rounded p-1 text-sm text-center">
+                <span class="text-sm text-gray-500 ml-1">sec</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Meta Information -->
+      <div id="meta" class="p-4 bg-gray-50 border-b border-gray-200">
+        <!-- Meta information will be populated here -->
+      </div>
+
+      <!-- Data Table -->
+      <div class="p-4">
+        <div id="tableContainer" class="table-container overflow-auto border border-gray-200 rounded-lg">
+          <!-- Table will be injected here -->
+        </div>
+      </div>
+
+      <!-- Footer Actions -->
+      <div class="p-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+        <button id="downloadAll" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition duration-150 flex items-center">
+          <i class="fas fa-download mr-2"></i>
+          Download Combined CSV
+        </button>
+        <div id="status" class="text-sm text-gray-600 flex items-center">
+          <i class="fas fa-info-circle mr-1"></i>
+          <span>Ready to fetch data</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // DOM Elements
+      const stocksSelect = document.getElementById('stocksSelect');
+      const expirySelect = document.getElementById('expirySelect');
+      const fetchBtn = document.getElementById('fetchBtn');
+      const autoRefresh = document.getElementById('autoRefresh');
+      const intervalInput = document.getElementById('interval');
+      const metaDiv = document.getElementById('meta');
+      const tableContainer = document.getElementById('tableContainer');
+      const downloadAllBtn = document.getElementById('downloadAll');
+      const statusDiv = document.getElementById('status');
+      const lastUpdateTime = document.getElementById('lastUpdateTime');
+      
+      // Sample data for demonstration
+      const sampleStocks = [
+        { symbol: 'RELIANCE', name: 'Reliance Industries' },
+        { symbol: 'TCS', name: 'Tata Consultancy Services' },
+        { symbol: 'INFY', name: 'Infosys' },
+        { symbol: 'HDFC', name: 'HDFC Bank' },
+        { symbol: 'ICICIBANK', name: 'ICICI Bank' },
+        { symbol: 'BHARTIARTL', name: 'Bharti Airtel' },
+        { symbol: 'SBIN', name: 'State Bank of India' },
+        { symbol: 'WIPRO', name: 'Wipro' },
+        { symbol: 'HINDUNILVR', name: 'Hindustan Unilever' },
+        { symbol: 'ITC', name: 'ITC Limited' }
+      ];
+      
+      const sampleExpiries = [
+        '25-May-2023',
+        '01-Jun-2023',
+        '08-Jun-2023',
+        '15-Jun-2023',
+        '22-Jun-2023',
+        '29-Jun-2023'
+      ];
+      
+      // Initialize the UI
+      function initializeUI() {
+        // Populate stocks dropdown
+        sampleStocks.forEach(stock => {
+          const option = document.createElement('option');
+          option.value = stock.symbol;
+          option.textContent = `${stock.symbol} - ${stock.name}`;
+          stocksSelect.appendChild(option);
+        });
+        
+        // Select first 3 stocks by default
+        for (let i = 0; i < 3 && i < stocksSelect.options.length; i++) {
+          stocksSelect.options[i].selected = true;
+        }
+        
+        // Populate expiry dropdown
+        sampleExpiries.forEach(expiry => {
+          const option = document.createElement('option');
+          option.value = expiry;
+          option.textContent = expiry;
+          expirySelect.appendChild(option);
+        });
+        
+        // Set default expiry to the first one
+        if (expirySelect.options.length > 1) {
+          expirySelect.options[1].selected = true;
+        }
+        
+        // Display initial status
+        updateStatus('Select stocks and click "Fetch Data" to begin');
+      }
+      
+      // Update status message
+      function updateStatus(message, isError = false) {
+        statusDiv.innerHTML = `<i class="fas fa-${isError ? 'exclamation-triangle' : 'info-circle'} mr-1"></i> ${message}`;
+        statusDiv.className = `text-sm flex items-center ${isError ? 'text-red-600' : 'text-gray-600'}`;
+      }
+      
+      // Update last update time
+      function updateLastUpdateTime() {
+        const now = new Date();
+        lastUpdateTime.textContent = now.toLocaleTimeString();
+      }
+      
+      // Generate sample option chain data
+      function generateSampleOptionChain(stockSymbol, expiry) {
+        const strikes = [];
+        const basePrice = 1800 + Math.floor(Math.random() * 1000);
+        
+        for (let i = -5; i <= 5; i++) {
+          const strike = basePrice + (i * 100);
+          const callOI = Math.floor(Math.random() * 100000);
+          const putOI = Math.floor(Math.random() * 100000);
+          const callChangeOI = Math.floor(Math.random() * 20000) - 10000;
+          const putChangeOI = Math.floor(Math.random() * 20000) - 10000;
+          const callVolume = Math.floor(Math.random() * 50000);
+          const putVolume = Math.floor(Math.random() * 50000);
+          const callIV = (Math.random() * 10 + 15).toFixed(2);
+          const putIV = (Math.random() * 10 + 15).toFixed(2);
+          const callLTP = (Math.random() * 100).toFixed(2);
+          const putLTP = (Math.random() * 100).toFixed(2);
+          
+          strikes.push({
+            strike,
+            call: {
+              oi: callOI,
+              changeOi: callChangeOI,
+              volume: callVolume,
+              iv: callIV,
+              ltp: callLTP
+            },
+            put: {
+              oi: putOI,
+              changeOi: putChangeOI,
+              volume: putVolume,
+              iv: putIV,
+              ltp: putLTP
+            }
+          });
+        }
+        
+        return {
+          symbol: stockSymbol,
+          expiry: expiry,
+          underlyingValue: basePrice,
+          timestamp: new Date().toISOString(),
+          strikes: strikes
+        };
+      }
+      
+      // Fetch data (simulated)
+      function fetchData() {
+        const selectedStocks = Array.from(stocksSelect.selectedOptions).map(opt => opt.value);
+        const selectedExpiry = expirySelect.value;
+        
+        if (selectedStocks.length === 0) {
+          updateStatus('Please select at least one stock', true);
+          return;
+        }
+        
+        updateStatus('Fetching data...');
+        fetchBtn.disabled = true;
+        fetchBtn.innerHTML = '<div class="loading mr-2"></div> Fetching...';
+        
+        // Simulate API call delay
+        setTimeout(() => {
+          const data = selectedStocks.map(stock => 
+            generateSampleOptionChain(stock, selectedExpiry || sampleExpiries[0])
+          );
+          
+          renderMetaInfo(data);
+          renderTable(data);
+          updateLastUpdateTime();
+          updateStatus(`Loaded data for ${selectedStocks.length} stock(s)`);
+          
+          fetchBtn.disabled = false;
+          fetchBtn.innerHTML = '<i class="fas fa-sync-alt mr-2"></i> Fetch Data';
+        }, 1500);
+      }
+      
+      // Render meta information
+      function renderMetaInfo(data) {
+        if (data.length === 0) return;
+        
+        let html = '<div class="grid grid-cols-1 md:grid-cols-3 gap-4">';
+        
+        data.forEach(item => {
+          html += `
+            <div class="bg-white p-3 rounded-lg border border-gray-200">
+              <div class="flex justify-between items-center">
+                <h3 class="font-bold text-lg">${item.symbol}</h3>
+                <span class="text-sm text-gray-500">${item.expiry}</span>
+              </div>
+              <div class="mt-2">
+                <div class="flex justify-between">
+                  <span class="text-gray-600">Underlying Value:</span>
+                  <span class="font-medium">₹${item.underlyingValue.toFixed(2)}</span>
+                </div>
+                <div class="flex justify-between mt-1">
+                  <span class="text-gray-600">Total Strikes:</span>
+                  <span class="font-medium">${item.strikes.length}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        
+        html += '</div>';
+        metaDiv.innerHTML = html;
+      }
+      
+      // Render the option chain table
+      function renderTable(data) {
+        if (data.length === 0) {
+          tableContainer.innerHTML = '<div class="p-8 text-center text-gray-500">No data available. Please select stocks and fetch data.</div>';
+          return;
+        }
+        
+        // For simplicity, we'll show the first stock's data
+        const optionData = data[0];
+        
+        let html = `
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="sticky-header bg-gray-50">
+              <tr>
+                <th colspan="5" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-100">CALLS</th>
+                <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">STRIKE</th>
+                <th colspan="5" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-100">PUTS</th>
+              </tr>
+              <tr>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">OI</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Chng OI</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volume</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IV</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">LTP</th>
+                <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">LTP</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IV</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Volume</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Chng OI</th>
+                <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">OI</th>
+              </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+        `;
+        
+        optionData.strikes.forEach(strike => {
+          const isITM = strike.strike < optionData.underlyingValue;
+          const rowClass = isITM ? 'highlight-row' : '';
+          
+          html += `
+            <tr class="${rowClass}">
+              <!-- CALLS Data -->
+              <td class="px-4 py-2 whitespace-nowrap text-sm option-call">${formatNumber(strike.call.oi)}</td>
+              <td class="px-4 py-2 whitespace-nowrap text-sm option-call ${strike.call.changeOi >= 0 ? 'positive-change' : 'negative-change'}">${formatNumber(strike.call.changeOi)}</td>
+              <td class="px-4 py-2 whitespace-nowrap text-sm option-call">${formatNumber(strike.call.volume)}</td>
+              <td class="px-4 py-2 whitespace-nowrap text-sm option-call">${strike.call.iv}%</td>
+              <td class="px-4 py-2 whitespace-nowrap text-sm font-medium option-call">${strike.call.ltp}</td>
+              
+              <!-- STRIKE Price -->
+              <td class="px-4 py-2 whitespace-nowrap text-sm text-center font-bold border-l border-r border-gray-200">${strike.strike}</td>
+              
+              <!-- PUTS Data -->
+              <td class="px-4 py-2 whitespace-nowrap text-sm font-medium option-put">${strike.put.ltp}</td>
+              <td class="px-4 py-2 whitespace-nowrap text-sm option-put">${strike.put.iv}%</td>
+              <td class="px-4 py-2 whitespace-nowrap text-sm option-put">${formatNumber(strike.put.volume)}</td>
+              <td class="px-4 py-2 whitespace-nowrap text-sm option-put ${strike.put.changeOi >= 0 ? 'positive-change' : 'negative-change'}">${formatNumber(strike.put.changeOi)}</td>
+              <td class="px-4 py-2 whitespace-nowrap text-sm option-put">${formatNumber(strike.put.oi)}</td>
+            </tr>
+          `;
+        });
+        
+        html += `
+            </tbody>
+          </table>
+        `;
+        
+        tableContainer.innerHTML = html;
+      }
+      
+      // Format large numbers with commas
+      function formatNumber(num) {
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      }
+      
+      // Download CSV
+      function downloadCSV() {
+        updateStatus('Preparing download...');
+        // In a real implementation, this would generate a CSV from the current data
+        setTimeout(() => {
+          updateStatus('CSV download ready');
+          alert('In a real implementation, this would download a CSV file with all the option chain data.');
+        }, 1000);
+      }
+      
+      // Auto-refresh functionality
+      let refreshInterval = null;
+      
+      function setupAutoRefresh() {
+        if (autoRefresh.checked) {
+          const interval = parseInt(intervalInput.value) * 1000;
+          refreshInterval = setInterval(fetchData, interval);
+          updateStatus(`Auto-refresh enabled (${interval/1000}s)`);
+        } else {
+          if (refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+            updateStatus('Auto-refresh disabled');
+          }
+        }
+      }
+      
+      // Event Listeners
+      fetchBtn.addEventListener('click', fetchData);
+      downloadAllBtn.addEventListener('click', downloadCSV);
+      autoRefresh.addEventListener('change', setupAutoRefresh);
+      intervalInput.addEventListener('change', function() {
+        if (autoRefresh.checked) {
+          setupAutoRefresh();
+        }
+      });
+      
+      // Initialize the application
+      initializeUI();
+    });
+  </script>
+</body>
+</html>
